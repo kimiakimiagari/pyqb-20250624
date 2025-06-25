@@ -46,28 +46,43 @@ import arviz as az  # type: ignore
 #
 # Load the data using `MouseID` as the index and print the unique values for all the columns whose name does not end with "_N".
 
-pass
+df = pd.read_csv('mice.csv', index_col='MouseID')
+df.head()
+
+for column in df[[c for c in df.columns if not c.endswith('_N')]]:
+    print(f"{column}: {df[column].unique()}")
 
 # ### Exercise 2 (max 2 points)
 #
 # Plot a histogram of the "NR1_N" values.
 #
 
-pass
+_ = df['NR1_N'].hist(bins='auto', density=True, legend=True)
 
 # ### Exercise 3 (max 3 points)
 #
 # Make a figure with two columns of plots. In the first column plot together (contrast) the histograms of 'NR1_N' for the two genotypes. In the second column plot together (contrast) the histograms of 'NR1_N' for the two treatments. Use density histograms to make the diagrams easy to compare; add proper titles and legends.
 #
 
-pass
+fig, ax = plt.subplots(ncols=2, figsize=(10, 5))
+for i, k in enumerate(['Genotype', 'Treatment']):
+    for g in df[k].unique():
+        ax[i].hist(df[df[k] == g]['NR1_N'], density=True, alpha=.7, bins='auto', label=g)
+    ax[i].legend()
+    ax[i].set_title(k)
 
 # ### Exercise 4 (max 5 points)
 #
 # Make a figure with four plots (2 rows and 2 columns) with the histograms of both "NR1_N" and "NR2A_N" in the four feature combinations of "Genotype" and "Treatment". 
 #
 
-pass
+fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(10, 10), sharex=True, sharey=True)
+for i, g in enumerate(df['Genotype'].unique()):
+    for j, t in enumerate(df['Treatment'].unique()):
+        for p in ['NR1_N', 'NR2A_N']:
+            ax[i, j].hist(df[(df['Genotype'] == g) & (df['Treatment'] == t)][p], density=True, alpha=.7, bins='auto', label=f"{g} {t} {p}")
+        ax[i, j].legend()
+
 
 # ### Exercise 5 (max 7 points)
 #
@@ -76,19 +91,44 @@ pass
 #
 # To get the full marks, you should declare correctly the type hints and add a test within a doctest string.
 
-pass
+def median_under_threshold(numbers: list[float], threshold: float) -> float:
+    """Return the median of all the numbers below the threshold.
+
+    >>> import math
+    >>> math.isclose(median_under_threshold([2., 3., 1., 6., -1., 0.3], 5.), 1.)
+    True
+    >>> math.isclose(median_under_threshold([2., 3., 1., 6., -1., 0.4, 0], 5.), 0.7)
+    True
+    >>> math.isnan(median_under_threshold([2., 3., 1., 6., -1., 0.4, 0], -2.))
+    True
+
+    """
+    below = [x for x in numbers if x < threshold]
+    n = len(below)
+    if n == 0:
+        return float('nan')
+    if n % 2 != 0:
+        return sorted(below)[len(below) // 2]
+    low = len(below) // 2 - 1
+    high = low + 1
+    bb = sorted(below)
+    return (bb[low] + bb[high]) / 2
+
+
+import doctest
+doctest.testmod()
 
 # ### Exercise 6 (max 4 points)
 #
 # Apply the function defined in exercise 5 to "NR1_N" data, with a threshold of 2. Be sure to use arguments with the types required by the signature of the function. Compare the result with the one computed with pandas methods.
 
-pass
+median_under_threshold(df['NR1_N'].to_list(), 2), df['NR1_N'][df['NR1_N'] < 2].median()
 
 # ### Exercise 7 (max 4 points)
 #
 # Add a column `classification` to the data with a string that encodes the features of each observation. The genotype is encoded with c or t, the treatment with m and s: a record for a mouse with genotype Ts65Dn, behavior C/S, and treatment Saline will be encoded with the string "c-C/S-s". 
 
-pass
+df['classification'] = df['Genotype'].str.lower().str.slice(0,1) + '-' + df['Behavior'] + '-' + df['Treatment'].str.lower().str.slice(0,1)
 
 # ### Exercise 8 (max 5 points)
 #
@@ -96,4 +136,20 @@ pass
 #
 #
 
-pass
+# +
+dd = df[~df['NR1_N'].isnull() & ~df['NR2A_N'].isnull()]
+
+with pm.Model():
+    a = pm.Normal('alpha', mu=0, sigma=2)
+    b = pm.Normal('beta', mu=0, sigma=2)
+    s = pm.Exponential('sigma', lam=1)
+
+    pm.Normal('NR1', mu=a+b*dd['NR2A_N'], observed=dd['NR1_N'])
+
+    idata = pm.sample()
+    
+# -
+
+_ = az.plot_posterior(idata)
+
+
