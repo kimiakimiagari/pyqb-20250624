@@ -1,6 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: ipynb,py:light
 #     text_representation:
 #       extension: .py
 #       format_name: light
@@ -46,28 +47,73 @@ import arviz as az  # type: ignore
 #
 # Load the data using `MouseID` as the index and print the unique values for all the columns whose name does not end with "_N".
 
-pass
+df = pd.read_csv('mice.csv', index_col = 'MouseID')
+for col in df.columns:
+    if not col.endswith('_N'):
+        print(col, ':', df[col].unique())
 
 # ### Exercise 2 (max 2 points)
 #
 # Plot a histogram of the "NR1_N" values.
 #
 
-pass
+# +
+plt.hist(df['NR1_N'],bins=30)
+
+plt.title('xxx')
+
+# -
 
 # ### Exercise 3 (max 3 points)
 #
 # Make a figure with two columns of plots. In the first column plot together (contrast) the histograms of 'NR1_N' for the two genotypes. In the second column plot together (contrast) the histograms of 'NR1_N' for the two treatments. Use density histograms to make the diagrams easy to compare; add proper titles and legends.
 #
 
-pass
+# +
+plt.figure()
+plt.subplot(1, 2, 1)
+for g in df['Genotype'].unique():
+    df[df['Genotype'] == g]['NR1_N'].plot(kind = 'hist', density = True, label = g)
+plt.legend()
+plt.title('NR1_N by Genotype')
+
+plt.subplot(1,2,2)
+for t in df['Treatment'].unique():
+    df[df['Treatment'] == t]['NR1_N'].plot(kind = 'hist', density = True, label = t)
+plt.legend()
+plt.title('NR1_N by Treatment')
+
+plt.tight_layout()
+plt.show()
+    
+# -
 
 # ### Exercise 4 (max 5 points)
 #
 # Make a figure with four plots (2 rows and 2 columns) with the histograms of both "NR1_N" and "NR2A_N" in the four feature combinations of "Genotype" and "Treatment". 
 #
 
-pass
+# +
+fig , axes = plt.subplots(2,2)
+features = ["NR1_N" , "NR2A_N" ]
+treatment = df['Treatment'].unique()
+genotype = df['Genotype'].unique()
+
+for i, feat in enumerate(features):
+    for j, treat in enumerate(treatment[:2]):
+        ax = axes[i,j]
+        for g in genotype[:2]:
+            vals = df[(df['Treatment'] == treat) & (df['Genotype'] == g)][feat].dropna()
+            ax.hist(vals, density = True, label = g)
+        ax.set_title(f'{feat} - {treat}')
+        ax.legend()
+
+plt.tight_layout()
+plt.show()
+            
+
+
+# -
 
 # ### Exercise 5 (max 7 points)
 #
@@ -76,19 +122,53 @@ pass
 #
 # To get the full marks, you should declare correctly the type hints and add a test within a doctest string.
 
-pass
+def median_giver(values: list[float], th: float) -> float:
+    """
+    >>> median_giver([2.0, 3.0, 1.0, 6.0, -1.0, 0.3], 5.0)
+    1.0
+    >>> median_giver([2.0, 3.0, 1.0, 6.0, -1.0, 0.4, 0.0], 5.0)
+    0.7
+    """
+    vals = []
+    for v in values:
+        if v < th:
+            vals.append(v)
+    vals.sort()
+    n = len(vals)
+    if n == 0:
+        raise ValueError("No values below threshold")
+    middle = n // 2
+    if n % 2 == 1:
+        result = vals[middle]
+    else:
+        result = (vals[middle - 1] + vals[middle]) / 2
+    return result
+
+
+
+import doctest
+doctest.testmod()
 
 # ### Exercise 6 (max 4 points)
 #
 # Apply the function defined in exercise 5 to "NR1_N" data, with a threshold of 2. Be sure to use arguments with the types required by the signature of the function. Compare the result with the one computed with pandas methods.
 
-pass
+python = median_giver(values =df['NR1_N'].tolist() , th = 2.0)
+print(python)
+pandas_result = df[df['NR1_N']< 2.0]['NR1_N'].median()
+print(pandas_result)
 
 # ### Exercise 7 (max 4 points)
 #
 # Add a column `classification` to the data with a string that encodes the features of each observation. The genotype is encoded with c or t, the treatment with m and s: a record for a mouse with genotype Ts65Dn, behavior C/S, and treatment Saline will be encoded with the string "c-C/S-s". 
 
-pass
+# +
+genotype_map = {'Ts65Dn': 'c', 'Control': 't'}
+treatment_map = {'Memantine': 'm', 'Saline': 's'}
+
+df['classification'] = (df['Genotype'].map(genotype_map) + '-'+ df['Behavior']+'-'+df['Treatment'].map(treatment_map))
+df.head
+# -
 
 # ### Exercise 8 (max 5 points)
 #
@@ -96,4 +176,21 @@ pass
 #
 #
 
-pass
+# +
+df_clean = df.dropna(subset=['NR1_N', 'NR2A_N'])
+
+x = df_clean['NR2A_N'].values
+y = df_clean['NR1_N'].values
+
+with pm.Model() as model:
+    alpha = pm.Normal("alpha", mu=0, sigma=2)
+    beta = pm.Normal("beta", mu=0, sigma=2)
+    sigma = pm.Exponential("sigma", lam=1)
+
+    mu = alpha + beta * x
+    y_obs = pm.Normal("y_obs", mu=mu, sigma=sigma, observed=y)
+
+    trace = pm.sample(1000, tune=1000, return_inferencedata=True)
+
+pm.plot_posterior(trace, var_names=["alpha", "beta", "sigma"])
+plt.show()
